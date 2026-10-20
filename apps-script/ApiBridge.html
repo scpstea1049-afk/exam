@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+  </head>
+  <body>
+    <script>
+      const ALLOWED_PARENT_ORIGIN = <?!= JSON.stringify(allowedParentOrigin) ?>;
+
+      function sendToParent(message) {
+        if (ALLOWED_PARENT_ORIGIN) {
+          parent.postMessage(message, ALLOWED_PARENT_ORIGIN);
+        }
+      }
+
+      window.addEventListener('message', function(event) {
+        if (event.source !== parent || event.origin !== ALLOWED_PARENT_ORIGIN) return;
+        const message = event.data || {};
+        if (message.type !== 'GENERATE_QUIZ' || !message.requestId || !message.prompt) return;
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            sendToParent({ type: 'QUIZ_RESULT', requestId: message.requestId, result: result });
+          })
+          .withFailureHandler(function(error) {
+            sendToParent({
+              type: 'QUIZ_BRIDGE_ERROR',
+              requestId: message.requestId,
+              error: error && error.message ? error.message : '生成失敗，請稍後再試。'
+            });
+          })
+          .generateQuizContent({ prompt: message.prompt, options: message.options || {} });
+      });
+
+      window.addEventListener('load', function() {
+        if (!ALLOWED_PARENT_ORIGIN) {
+          parent.postMessage({
+            type: 'QUIZ_BRIDGE_ERROR',
+            error: 'Apps Script 尚未設定 GitHub Pages 網域。'
+          }, '*');
+          return;
+        }
+        sendToParent({ type: 'QUIZ_BRIDGE_READY' });
+      });
+    </script>
+  </body>
+</html>
